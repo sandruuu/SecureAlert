@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+jinja2
+python-jose[cryptography]
+passlib[bcrypt]
+webauthn
+qrcode
+Pillow
+sqlalchemy
+psycopg2-binary
+pyotp

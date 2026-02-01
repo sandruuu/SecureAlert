@@ -1,0 +1,17 @@
+module.exports = {
+    content: [
+        "./index.html",
+        "./src/**/*.{js,ts,jsx,tsx}",
+    ],
+    theme: {
+        extend: {
+            colors: {
+                primary: '#FF5F1F',
+            },
+            fontFamily: {
+                outfit: ['sans-serif'],
+            }
+        },
+    },
+    plugins: [],
+}

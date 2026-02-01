@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Node/Frontend
+node_modules/
+npm-debug.log
+yarn-error.log
+.pnpm-debug.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent credentials (sensitive!)
+agent_credentials.json
+
+# WireGuard keys (sensitive!)
+wg_config/*.key
+wg_config/privatekey
+wg_config/publickey
+
+# Database volumes (local only)
+postgres_data/
+
+# Gemini brain artifacts
+.gemini/
