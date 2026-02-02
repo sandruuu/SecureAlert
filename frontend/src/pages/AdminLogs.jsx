@@ -78,8 +78,6 @@ const AdminLogs = () => {
         <div className="space-y-6">
             {/* Header */}
             <div>
-                <h1 className="text-2xl font-bold text-slate-900">System Logs</h1>
-                <p className="text-slate-500 text-sm">Authentication and posture events</p>
             </div>
 
             {/* Filter Tabs */}
@@ -89,8 +87,8 @@ const AdminLogs = () => {
                         key={f}
                         onClick={() => setFilter(f)}
                         className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === f
-                                ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20'
-                                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                            ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20'
+                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                             }`}
                     >
                         {f === 'ALL' ? 'All' : f === 'AUTH' ? 'Authentication' : 'Posture'}
@@ -141,8 +139,8 @@ const AdminLogs = () => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`text-xs font-bold px-2 py-1 rounded-lg ${log.event_source === 'POSTURE'
-                                                ? 'bg-purple-50 text-purple-700'
-                                                : 'bg-blue-50 text-blue-700'
+                                            ? 'bg-purple-50 text-purple-700'
+                                            : 'bg-blue-50 text-blue-700'
                                             }`}>
                                             {log.event_source}
                                         </span>

@@ -13,6 +13,8 @@ function App() {
   const navigate = useNavigate()
   const location = useLocation()
 
+  const [logoutReason, setLogoutReason] = useState('')
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -21,7 +23,9 @@ function App() {
           setUser({
             username: resp.data.username,
             role: resp.data.role || 'user',
-            score: resp.data.trust_score || 0
+            score: resp.data.trust_score || 0,
+            status: resp.data.status,
+            enrollmentToken: resp.data.enrollment_token
           })
         }
       } catch (e) {
@@ -32,7 +36,48 @@ function App() {
       }
     }
     checkAuth()
-  }, [])
+
+    // Polling for Session Status / Security Updates
+    const interval = setInterval(async () => {
+      if (!user) return; // Only poll if we have a session (active or pending)
+
+      try {
+        const resp = await axios.get('/api/session/status');
+        const data = resp.data;
+
+        if (data.status === 'blocked') {
+          setLogoutReason(`Session Terminated: ${data.detail || "Trust score too low"}`); // detail might not be in success 200 body if it was 403.
+          // Wait, logic in auth.py returns {status: "blocked"} on 200 OK via check_session_status?
+          // Yes, check_session_status accesses sessions directly. blocked check is in dependencies.py (used by other routes).
+
+          setUser(null);
+          navigate('/login');
+          return;
+        }
+
+        // Update local state if changed
+        setUser(prev => {
+          if (!prev) return null;
+          if (prev.score !== data.score || prev.status !== data.status) {
+            return { ...prev, score: data.score, status: data.status };
+          }
+          return prev;
+        });
+
+      } catch (e) {
+        if (e.response && (e.response.status === 401 || e.response.status === 403)) {
+          // Check if it was a block
+          if (e.response.data && e.response.data.detail) {
+            setLogoutReason(e.response.data.detail);
+          }
+          setUser(null);
+          navigate('/login');
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [user?.username]); // Re-run if user changes (login/logout)
 
   const handleLoginSuccess = (userData) => {
     setUser({
@@ -66,8 +111,17 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={
-        !user ? (
-          <LoginPage onLoginSuccess={handleLoginSuccess} />
+        !user || user.status === 'pending_posture' || user.status === 'mfa_required' ? (
+          <LoginPage
+            onLoginSuccess={handleLoginSuccess}
+            initialStep={
+              user?.status === 'pending_posture' ? 'posture' :
+                (user?.status === 'mfa_required' ? 'mfa' : 'login')
+            }
+            initialToken={user?.enrollmentToken}
+            initialScore={user?.score}
+            logoutReason={logoutReason}
+          />
         ) : (
           <Navigate to={user.role === 'admin' ? "/admin/dashboard" : "/dashboard"} replace />
         )

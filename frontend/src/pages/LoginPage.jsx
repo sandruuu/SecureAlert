@@ -3,20 +3,20 @@ import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 import axios from 'axios'
 import { User, ChevronRight, Fingerprint, RefreshCw, AlertCircle, ShieldAlert, ShieldCheck, Loader2, Copy } from 'lucide-react'
 
-const LoginPage = ({ onLoginSuccess }) => {
+const LoginPage = ({ onLoginSuccess, initialStep = 'login', initialToken = '', initialScore = 0, logoutReason = '' }) => {
     // Steps: 'login', 'posture', 'mfa'
-    const [verificationStep, setVerificationStep] = useState('login')
+    const [verificationStep, setVerificationStep] = useState(initialStep)
 
     const [username, setUsername] = useState('')
     const [inviteCode, setInviteCode] = useState('')
-    const [error, setError] = useState('')
+    const [error, setError] = useState(logoutReason)
     const [loading, setLoading] = useState(false)
     const [isRegistering, setIsRegistering] = useState(false)
     const [mounted, setMounted] = useState(false)
 
     // Posture State
-    const [enrollmentToken, setEnrollmentToken] = useState('')
-    const [trustScore, setTrustScore] = useState(0)
+    const [enrollmentToken, setEnrollmentToken] = useState(initialToken)
+    const [trustScore, setTrustScore] = useState(initialScore)
 
     // MFA State
     const [showMFA, setShowMFA] = useState(false)
@@ -59,6 +59,36 @@ const LoginPage = ({ onLoginSuccess }) => {
         return () => clearInterval(interval);
     }, [verificationStep, onLoginSuccess]);
 
+    // Trigger MFA Challenge if entering MFA step without tempToken (e.g. from transition)
+    useEffect(() => {
+        if (verificationStep === 'mfa' && !tempToken) {
+            const requestChallenge = async () => {
+                try {
+                    setLoading(true);
+                    const res = await axios.post('/api/auth/mfa/challenge');
+                    if (res.data.temp_token) {
+                        setTempToken(res.data.temp_token);
+                        setMfaType(res.data.mfa_type);
+                    }
+                } catch (e) {
+                    setError("Failed to initiate MFA. Please try again.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+            requestChallenge();
+        }
+    }, [verificationStep, tempToken]);
+
+    // Sync state with props when they change (e.g. forced logout while on login page)
+    useEffect(() => {
+        setVerificationStep(initialStep)
+    }, [initialStep])
+
+    useEffect(() => {
+        if (logoutReason) setError(logoutReason)
+    }, [logoutReason])
+
     const handleRegister = async (e) => {
         if (e) e.preventDefault();
         if (!username || !inviteCode) return setError('Email and Invite Code required')
@@ -89,6 +119,9 @@ const LoginPage = ({ onLoginSuccess }) => {
         setError('')
         try {
             const resp = await axios.post('/api/login/options', { username })
+
+            // Check if resp.data wraps the options in a specific property like 'options' or 'publicKey'
+            // SimpleWebAuthn browser expects JSON with Public Key options.
             const asseResp = await startAuthentication(resp.data)
             const verResp = await axios.post('/api/login/verify', { username, response: asseResp })
 
@@ -158,14 +191,17 @@ const LoginPage = ({ onLoginSuccess }) => {
                 {/* --- LOGO SECTION --- */}
                 <div className="flex flex-col items-center justify-center mb-10">
                     <div className="w-16 h-20 relative mb-2">
-                        <svg className="w-full h-full drop-shadow-lg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg className="w-full h-full drop-shadow-md" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" className="fill-slate-900 stroke-slate-700" strokeWidth="1" />
+                            <circle cx="12" cy="14" r="2.5" className="fill-white" />
                             <path d="M12 16.5V18.5" className="stroke-white" strokeWidth="2" strokeLinecap="round" />
-                            <path d="M9 10C9 10 10 12 12 12C14 12 15 10 15 10" className="stroke-white" strokeWidth="1.5" strokeLinecap="round" />
+                            <path d="M8.5 8C9.5 7 10.5 6.5 12 6.5C13.5 6.5 14.5 7 15.5 8" className="stroke-white/80" strokeWidth="1.5" strokeLinecap="round" />
+                            <path d="M7 6.5C8.5 5 10 4.5 12 4.5C14 4.5 15.5 5 17 6.5" className="stroke-white/50" strokeWidth="1.5" strokeLinecap="round" />
+                            <path d="M10 9.5C10.5 9 11.25 8.7 12 8.7C12.75 8.7 13.5 9 14 9.5" className="stroke-white" strokeWidth="1.5" strokeLinecap="round" />
                         </svg>
                     </div>
                     <h2 className="text-xl font-bold tracking-widest text-slate-900">
-                        {isRegistering ? "DEVICE" : "SECURE"}<span className="text-[#FF5F1F]">{isRegistering ? "REGISTRATION" : "LOGIN"}</span>
+                        SECURE<span className="text-[#FF5F1F]">LOGIN</span>
                     </h2>
                     <p className="text-xs text-slate-400 font-medium tracking-wide uppercase mt-1">
                         {verificationStep === 'posture' ? "Security Check Required" : (isRegistering ? "Activate New Account" : "Passwordless Access")}
@@ -175,14 +211,12 @@ const LoginPage = ({ onLoginSuccess }) => {
                 {/* --- POSTURE CHECK UI --- */}
                 {verificationStep === 'posture' ? (
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-8">
-                        <div className="bg-orange-50 border border-orange-100 rounded-xl p-5 text-center space-y-3">
-                            <div className="mx-auto w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center relative">
+                        <div className="rounded-xl p-5 text-center space-y-3">
+                            <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center relative">
                                 <Loader2 className="text-orange-600 animate-spin" size={24} />
-                                <div className="absolute inset-0 border-4 border-orange-200 rounded-full animate-pulse"></div>
                             </div>
                             <div>
                                 <h3 className="text-sm font-bold text-slate-900">Waiting for Device Agent...</h3>
-                                <p className="text-xs text-slate-500 mt-1">Current Trust Score: <span className="font-bold text-slate-900">{trustScore}%</span></p>
                             </div>
                         </div>
 
@@ -200,9 +234,6 @@ const LoginPage = ({ onLoginSuccess }) => {
                                         <Copy size={16} />
                                     </div>
                                 </div>
-                                <p className="text-[11px] text-slate-400 text-center">
-                                    Run <code>.\posture_agent.ps1 -EnrollToken "..."</code>
-                                </p>
                             </div>
                         )}
 
@@ -240,7 +271,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                             </div>
                         ) : (
                             <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
-                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3">
+                                <div className="border border-blue-100 rounded-xl p-4 flex items-start gap-3">
                                     <AlertCircle className="text-blue-600 shrink-0 mt-0.5" size={18} />
                                     <div>
                                         <p className="text-sm font-bold text-blue-800">Additional Verification Required</p>
@@ -306,7 +337,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                                         {isRegistering ? (
                                             <>
                                                 <RefreshCw size={18} />
-                                                <span>Activate Device</span>
+                                                <span>Activate</span>
                                             </>
                                         ) : (
                                             <>
@@ -329,7 +360,6 @@ const LoginPage = ({ onLoginSuccess }) => {
 
                 <div className="relative my-8">
                     <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-slate-200"></div>
                     </div>
                 </div>
 
@@ -344,7 +374,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                     ) : (
                         verificationStep !== 'posture' && !showMFA && (
                             <div className="space-y-2 animate-in fade-in">
-                                <p className="text-sm text-slate-500">First time here or new device?</p>
+                                <p className="text-sm text-slate-500">First time here?</p>
                                 <button onClick={() => { setIsRegistering(true); setError(''); }} className="text-sm font-bold text-[#FF5F1F] hover:underline">
                                     Activate New Account
                                 </button>

@@ -9,7 +9,7 @@ SMTP_PASSWORD = "eouq bepn qnel wuxv" # App Password
 # WEBAUTHN CONFIGURATION
 RP_ID = "localhost"
 RP_NAME = "Zero Trust Gateway"
-ORIGIN = "http://localhost:8095"
+ORIGIN = "http://localhost:8080"
 
 # SESSION CONFIGURATION
 SESSION_EXPIRE_MINUTES = 60

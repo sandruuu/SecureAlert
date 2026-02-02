@@ -35,12 +35,13 @@ def init_db():
         db = SessionLocal()
         print("LOG: Checking for existing admin user...", file=sys.stderr)
         try:
-            admin_user = db.query(models.User).filter(models.User.username == "admin").first()
+            admin_username = os.getenv("ADMIN_USERNAME", "admin")
+            admin_user = db.query(models.User).filter(models.User.username == admin_username).first()
             if not admin_user:
-                print("LOG: Admin user not found. Seeding default admin...", file=sys.stderr)
+                print(f"LOG: Admin user '{admin_username}' not found. Seeding default admin...", file=sys.stderr)
                 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
                 admin = models.User(
-                    username="admin", 
+                    username=admin_username, 
                     full_name="System Administrator",
                     role="admin", 
                     is_active=True,
@@ -50,14 +51,24 @@ def init_db():
                 db.flush()  # Get admin.id
                 
                 # Create invitation code for admin to register FIDO2 key
+                import secrets
+                invite_code = secrets.token_hex(4).upper()
                 invite_token = models.RegistrationToken(
                     user_id=admin.id,
-                    token="ADMIN-SETUP-2026"
+                    token=invite_code
                 )
                 db.add(invite_token)
                 db.commit()
-                print("LOG: Default admin created (user: admin)", file=sys.stderr)
-                print("LOG: Admin invitation code: ADMIN-SETUP-2026", file=sys.stderr)
+                print(f"LOG: Default admin created (user: {admin_username})", file=sys.stderr)
+                print(f"LOG: Admin invitation code: {invite_code}", file=sys.stderr)
+                
+                # Send invite email to admin
+                try:
+                    from utils.email import send_invite_email
+                    send_invite_email(admin_username, invite_code)
+                    print(f"LOG: Invite email sent to {admin_username}", file=sys.stderr)
+                except Exception as email_err:
+                    print(f"WARNING: Could not send invite email: {email_err}", file=sys.stderr)
             else:
                 print(f"LOG: Admin user found: {admin_user.username}", file=sys.stderr)
         except Exception as se:

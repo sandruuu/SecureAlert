@@ -85,7 +85,9 @@ def check_auth(request: Request, db: Session = Depends(get_db)):
         return {
             "username": sess_data["username"], 
             "trust_score": sess_data["score"],
-            "role": sess_data.get("role", "user")
+            "role": sess_data.get("role", "user"),
+            "status": sess_data.get("status", "active"),
+            "enrollment_token": sess_data.get("enrollment_token")
         }
     return Response(status_code=401)
 
@@ -204,16 +206,52 @@ def login_options(req: LoginRequest, db: Session = Depends(get_db)):
     return Response(content=options_to_json(options), media_type="application/json")
 
 @router.get("/session/status")
-def check_session_status(user_data: dict = Depends(get_session_data)):
+def check_session_status(request: Request, db: Session = Depends(get_db)):
     """
     Check current session status (polling endpoint for Login Gate).
     Allows access even if status is 'pending_posture'.
+    Checks if posture arrived and updates session.
     """
+    session_id = request.cookies.get("session_id")
+    if not session_id or session_id not in sessions:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user_data = sessions[session_id]
+    logger.info(f"DEBUG: check_session_status {session_id} -> {user_data.get('status')} score={user_data.get('score')}")
+    
+    # Check freshness logic...
+    
+    # Dynamic Check: If pending_posture, check if we received data
+    if user_data.get("status") == "pending_posture":
+        user_id = user_data.get("user_id")
+        if user_id:
+             # Check for any device with fresh posture for this user
+             # Or shared devices logic (simplified here to user's devices for now)
+             user_devices = db.query(Device).filter(Device.user_id == user_id).all()
+             for dev in user_devices:
+                 if dev.last_posture_time:
+                     age = (datetime.datetime.utcnow() - dev.last_posture_time).total_seconds()
+                     if age < 120:
+                         # Found fresh posture! Upgrade session.
+                         # In real world, we would recalculate risk score here.
+                         new_score = dev.trust_score if dev.trust_score else 85
+                         
+                         if new_score >= 80:
+                             user_data["status"] = "active"
+                             logger.info(f"Session {session_id} upgraded to ACTIVE (Score: {new_score})")
+                         elif new_score > 50:
+                             user_data["status"] = "mfa_required"
+                             logger.info(f"Session {session_id} upgraded to MFA_REQUIRED (Score: {new_score})")
+                             
+                         user_data["score"] = new_score
+                         break
+
     return {
         "status": user_data.get("status", "active"),
         "score": user_data.get("score"),
         "username": user_data.get("username"),
-        "role": user_data.get("role", "user")  # Include role for proper redirect
+        "role": user_data.get("role", "user"),
+        "enrollment_token": user_data.get("enrollment_token")
     }
 
 @router.post("/login/verify")
@@ -357,6 +395,9 @@ def login_verify(req: LoginRequest, request: Request, background_tasks: Backgrou
         ))
         db.commit()
         
+        # Generate Token FIRST
+        enrollment_token = generate_enrollment_token_if_needed(user_obj.id, db, device)
+
         # Create Restricted Session
         session_token = f"session_{username}_{uuid.uuid4()}"
         sessions[session_token] = {
@@ -365,11 +406,9 @@ def login_verify(req: LoginRequest, request: Request, background_tasks: Backgrou
             "method": "fido2", 
             "role": user_obj.role, 
             "user_id": user_obj.id,
-            "status": "pending_posture"
+            "status": "pending_posture",
+            "enrollment_token": enrollment_token
         }
-        
-        # CHANGED: Pass current device to generator to ensure token if THIS device is new
-        enrollment_token = generate_enrollment_token_if_needed(user_obj.id, db, device)
         
         resp = JSONResponse(content={
             "verified": True,
@@ -398,7 +437,7 @@ def login_verify(req: LoginRequest, request: Request, background_tasks: Backgrou
         raise HTTPException(403, f"Access denied. Trust score too low: {trust_score}")
     
     # CASE 2: Medium Trust -> MFA Required
-    if 50 < trust_score < 75:
+    if 50 < trust_score < 80:
         # STEP-UP AUTH (MFA)
         logger.info(f"MFA Required for {username}. Score: {trust_score}")
         
@@ -412,6 +451,7 @@ def login_verify(req: LoginRequest, request: Request, background_tasks: Backgrou
                 "username": username, 
                 "code": otp_code, 
                 "type": "email", 
+                "score": trust_score,
                 "expires": datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
             }
             background_tasks.add_task(send_otp_email, username, otp_code)
@@ -420,6 +460,7 @@ def login_verify(req: LoginRequest, request: Request, background_tasks: Backgrou
              mfa_sessions[temp_token] = {
                  "username": username, 
                  "type": "totp", 
+                 "score": trust_score,
                  "expires": datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
              }
              
@@ -514,8 +555,71 @@ def verify_mfa_code(req: MFAVerifyRequest, db: Session = Depends(get_db)):
              
     del mfa_sessions[req.temp_token]
     session_token = f"session_{user.username}_{uuid.uuid4()}"
-    sessions[session_token] = {"username": user.username, "score": 90, "method": "mfa", "role": user.role}
+    final_score = session_data.get("score", 90)
     
-    resp = JSONResponse(content={"verified": True, "role": user.role})
+    sessions[session_token] = {
+        "username": user.username, 
+        "score": final_score, 
+        "method": "mfa", 
+        "role": user.role,
+        "user_id": user.id,
+        "status": "active"
+    }
+    
+    resp = JSONResponse(content={
+        "verified": True, 
+        "role": user.role, 
+        "status": "active",
+        "username": user.username,
+        "score": final_score
+    })
     resp.set_cookie("session_id", session_token)
     return resp
+
+@router.post("/auth/mfa/challenge")
+def request_mfa_challenge(request: Request, db: Session = Depends(get_db)):
+    session_id = request.cookies.get("session_id")
+    if not session_id or session_id not in sessions:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user_data = sessions[session_id]
+    if user_data.get("status") != "mfa_required":
+        raise HTTPException(status_code=400, detail="MFA not required")
+    
+    username = user_data["username"]
+    user_obj = db.query(User).filter(User.username == username).first()
+    
+    # Generate MFA Challenge
+    temp_token = secrets.token_hex(16)
+    mfa_type = "email"
+    if user_obj.mfa_enabled and user_obj.mfa_secret:
+        mfa_type = "totp"
+    else:
+        otp_code = secrets.token_hex(3).upper()
+        # In background for production, but here synchronous for simplicity/debug
+        try:
+           send_otp_email(username, otp_code)
+        except Exception as e:
+           logger.error(f"Failed to send email: {e}")
+           
+        mfa_sessions[temp_token] = {
+            "username": username, 
+            "code": otp_code, 
+            "type": "email", 
+            "score": user_data.get("score", 50),
+            "expires": datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
+        }
+        
+    if mfa_type == "totp":
+         mfa_sessions[temp_token] = {
+             "username": username, 
+             "type": "totp", 
+             "score": user_data.get("score", 50),
+             "expires": datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
+         }
+         
+    return {
+        "mfa_required": True,
+        "mfa_type": mfa_type,
+        "temp_token": temp_token
+    }

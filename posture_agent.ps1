@@ -12,10 +12,10 @@
     
 .EXAMPLE
     # First time enrollment (with token from dashboard)
-    .\posture_agent.ps1 -EnrollToken "abc123..." -BackendUrl "http://localhost:8095"
+    .\posture_agent.ps1 -EnrollToken "abc123..." -BackendUrl "http://localhost:8080"
     
     # Subsequent runs (uses cached credentials)
-    .\posture_agent.ps1 -BackendUrl "http://localhost:8095"
+    .\posture_agent.ps1 -BackendUrl "http://localhost:8080"
 #>
 
 param(
@@ -29,7 +29,7 @@ param(
     [string]$DeviceSecret,
     
     [Parameter(Mandatory=$false)]
-    [string]$BackendUrl = "http://localhost:8095",
+    [string]$BackendUrl = "http://localhost:8080",
     
     [Parameter(Mandatory=$false)]
     [int]$IntervalSeconds = 30
@@ -224,8 +224,6 @@ function New-HmacSignature {
         [string]$Secret
     )
     
-    # Convert posture to JSON with sorted keys (match Python's sort_keys=True)
-    # Python json.dumps format: {"key": value, "key2": value} (space after : and ,)
     $sortedKeys = $Posture.Keys | Sort-Object
     $jsonParts = @()
     foreach ($key in $sortedKeys) {
@@ -440,7 +438,6 @@ try {
                 Write-Host "[$(Get-Date -Format 'HH:mm:ss')] SESSION TERMINATED: $($response.reason)" -ForegroundColor Red
                 Show-DisconnectNotification -Reason $response.reason
                 Write-Host "Exiting agent due to posture violation." -ForegroundColor Red
-                # exit 1  <-- REMOVED: Keep agent running so it can recover when issues are fixed
                 Write-Host "Agent will continue running. Please fix the issues above to restore access." -ForegroundColor Yellow
             } else {
                 Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Report sent successfully." -ForegroundColor Green

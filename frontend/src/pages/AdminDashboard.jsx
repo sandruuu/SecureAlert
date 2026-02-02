@@ -40,8 +40,6 @@ const AdminOverview = ({ trustScore }) => {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div>
-                <h1 className="text-2xl font-bold text-slate-900">Admin Overview</h1>
-                <p className="text-slate-500">System status and personal security score</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -51,30 +49,8 @@ const AdminOverview = ({ trustScore }) => {
                         <ShieldCheck size={32} />
                     </div>
                     <div>
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">My Trust Score</h3>
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Trust Score</h3>
                         <div className="text-3xl font-bold text-slate-900">{trustScore}/100</div>
-                    </div>
-                </div>
-
-                {/* Add Device Card */}
-                <button onClick={handleAddDevice} disabled={loading} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 hover:border-slate-900 transition-colors cursor-pointer group text-left">
-                    <div className="p-4 rounded-xl bg-purple-50 text-purple-600 group-hover:bg-purple-100 transition-colors">
-                        <Smartphone size={32} />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">{loading ? 'Processing...' : 'Add Device'}</h3>
-                        <div className="text-sm font-bold text-slate-900">Register New Key</div>
-                    </div>
-                </button>
-
-                {/* Resources Card */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 hover:border-slate-900 transition-colors cursor-pointer group" onClick={() => window.location.href = "/"}>
-                    <div className="p-4 rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
-                        <Server size={32} />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Web Resources</h3>
-                        <div className="text-sm font-bold text-slate-900">Access Portal</div>
                     </div>
                 </div>
             </div>

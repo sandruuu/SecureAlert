@@ -73,8 +73,6 @@ const AdminUsers = () => {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div>
-                <h1 className="text-2xl font-bold text-slate-900">User Management</h1>
-                <p className="text-slate-500">Manage access and registration</p>
             </div>
 
             {/* Create User Section */}
@@ -98,7 +96,7 @@ const AdminUsers = () => {
                             <option value="admin">Admin</option>
                         </select>
                     </div>
-                    <button type="submit" className="w-full md:w-auto bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 px-6 rounded-lg transition-all shadow-lg shadow-purple-600/20 active:scale-95 flex items-center justify-center gap-2">
+                    <button type="submit" className="w-full md:w-auto bg-orange-300 text-white font-semibold py-2.5 px-6 rounded-lg transition-all shadow-lg shadow-purple-600/20 active:scale-95 flex items-center justify-center gap-2">
                         Generate
                     </button>
                 </form>
@@ -139,7 +137,6 @@ const AdminUsers = () => {
                                 <th className="p-4">User</th>
                                 <th className="p-4">Role</th>
                                 <th className="p-4">Status</th>
-                                <th className="p-4">MFA</th>
                                 <th className="p-4 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -160,9 +157,6 @@ const AdminUsers = () => {
                                             <span className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-green-500' : 'bg-amber-500'}`}></span>
                                             {u.is_active ? 'Active' : 'Pending'}
                                         </span>
-                                    </td>
-                                    <td className="p-4 text-slate-500">
-                                        {u.has_mfa ? <Fingerprint size={16} className="text-green-600" /> : <span className="text-xs text-slate-400">No MFA</span>}
                                     </td>
                                     <td className="p-4 text-right">
                                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

@@ -202,21 +202,31 @@ def report_posture(req: PostureReportRequest, db: Session = Depends(get_db)):
         reason = f"Trust score dropped to {trust_score} (threshold: 60). Details: {details}"
     
     # 8. Log event
-    event_type = "SESSION_TERMINATED" if should_disconnect else "POSTURE_OK"
-    event = PostureEvent(
-        user_id=device.user_id,
-        device_id=device.id,
-        event_type=event_type,
-        reason=reason,
-        posture_snapshot=json.dumps({"posture": req.posture, "score": trust_score, "details": details})
-    )
-    db.add(event)
-    db.commit()
-    
-    # 9. If score <= 50, invalidate sessions
+    # 8. Log event ONLY if violation detected (reduce spam)
     if should_disconnect:
-        count = invalidate_user_sessions(device.user_id, reason)
-        logger.warning(f"Trust score {trust_score} <= 50 for device {req.device_id}. Invalidated {count} sessions.")
+        event = PostureEvent(
+            user_id=device.user_id,
+            device_id=device.id,
+            event_type="SESSION_TERMINATED",
+            reason=reason,
+            posture_snapshot=json.dumps({"posture": req.posture, "score": trust_score, "details": details})
+        )
+        db.add(event)
+        db.commit()
+    
+    # 9. If score <= 50, mark sessions as BLOCKED (don't delete, so UI can show reason)
+    logger.info(f"DEBUG: Attempting to block sessions for user_id={device.user_id} (Type: {type(device.user_id)})")
+    if should_disconnect:
+        for sid, data in sessions.items():
+            sess_uid = data.get("user_id")
+            logger.info(f"DEBUG: Checking session {sid} with user_id={sess_uid} (Type: {type(sess_uid)})")
+            if sess_uid == device.user_id:
+                data["status"] = "blocked"
+                data["block_reason"] = reason
+                logger.warning(f"Session {sid} BLOCKED: {reason}")
+        
+        # count = invalidate_user_sessions(device.user_id, reason)
+        logger.warning(f"Trust score {trust_score} <= 50 for device {req.device_id}. Sessions blocked.")
     else:
         # Update score in active sessions (allows Polling Endpoint to see improvement)
         for sid, data in sessions.items():
@@ -224,13 +234,10 @@ def report_posture(req: PostureReportRequest, db: Session = Depends(get_db)):
                 data["score"] = trust_score
                 
                 # PROMOTE SESSION STATUS based on new score
-                if trust_score >= 75:
+                if trust_score >= 80:
                     data["status"] = "active"
                     logger.info(f"Promoted session {sid} to ACTIVE (Score: {trust_score})")
-                elif 55 <= trust_score < 75:
-                     # If it was pending, maybe we require MFA now? 
-                     # For simplicity in this fix, if we are recovering, let's allow active if MFA was done?
-                     # Or stick to logic: Medium Trust -> MFA.
+                elif 50 < trust_score < 80:
                      if data.get("status") == "pending_posture":
                          data["status"] = "mfa_required"
                          logger.info(f"Promoted session {sid} to MFA_REQUIRED (Score: {trust_score})")
